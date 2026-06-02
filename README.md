@@ -77,6 +77,9 @@ The convention ties three things to that name, and they must match:
 profile "work"  ->  config dir ~/.claude-work  +  keychain item Claude-work-Token
 ```
 
+> Keychain item names are **case-sensitive**. `Claude-work-Token` ≠ `Claude-Work-Token` — use
+> the exact same casing as your `PROFILE`, or the `.envrc` reports the token "missing."
+
 Run `setup-token` **while logged into each account**. It mints a long-lived OAuth token
 (valid ~1 year). Store each in its own Keychain item — never in plaintext, never in a
 screenshot.
@@ -104,9 +107,13 @@ safety bias: a forgotten switch means *your own* side-project goes to *your own*
 never company code into a personal, training-eligible account.
 
 ```sh
-export CLAUDE_CONFIG_DIR="$HOME/.claude"
 export CLAUDE_CODE_OAUTH_TOKEN="$(security find-generic-password -s Claude-Personal-Token -w)"
 ```
+
+> **Do not set `CLAUDE_CONFIG_DIR` for personal.** Personal uses the native config dir
+> (`~/.claude`). Pointing `CLAUDE_CONFIG_DIR` at `~/.claude` relocates the config file from
+> `~/.claude.json` to `~/.claude/.claude.json` and breaks it ("configuration file not found").
+> Only *work* profiles set `CLAUDE_CONFIG_DIR`, and only to a **new** dir like `~/.claude-work`.
 
 See [`templates/zshrc-snippet.sh`](templates/zshrc-snippet.sh).
 
@@ -151,8 +158,10 @@ token** than your personal default. It compares the OAuth token each location re
   the keychain workaround is unnecessary there.
 - **Never run `/login` in a work dir.** That writes the shared keychain slot and undoes the
   isolation. Re-auth by re-running `setup-token` (step 2) instead.
-- **Set `CLAUDE_CONFIG_DIR` before a profile's first run** so `~/.claude.json` is redirected
-  too — it isn't moved retroactively.
+- **Only point `CLAUDE_CONFIG_DIR` at a NEW dir** (e.g. `~/.claude-work`), set before that
+  profile's first run. Never point it at the existing `~/.claude` — that relocates
+  `~/.claude.json` to `~/.claude/.claude.json` and breaks config. The personal default leaves
+  it unset.
 - **direnv loads on `cd`, not retroactively.** Start a fresh `claude` per project; `cd`-ing
   mid-session doesn't re-evaluate `.envrc`.
 - **Enterprise auth type matters.** This assumes your work seat mints a normal OAuth token
