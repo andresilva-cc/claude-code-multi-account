@@ -32,20 +32,23 @@ required.
 
 1. **Preconditions** — macOS + zsh; `claude` on PATH; `direnv` installed (`brew install direnv`)
    and hooked in `~/.zshrc`. Ask which directories map to which account (e.g. a work tree path).
-2. **Verify the work seat can mint a token** — the one real unknown. Ask the user to run
-   `! CLAUDE_CONFIG_DIR=~/.claude-work claude setup-token`. If it returns an `sk-ant-oat…`
+2. **Pick a profile name** per non-default account (`work`, `acme`, …). Convention, all keyed
+   to that name: config dir `~/.claude-$PROFILE` + keychain item `Claude-$PROFILE-Token` +
+   the `PROFILE=` line in that tree's `.envrc`. Keep all three in sync.
+3. **Verify the seat can mint a token** — the one real unknown. Ask the user to run
+   `! CLAUDE_CONFIG_DIR=~/.claude-$PROFILE claude setup-token`. If it returns an `sk-ant-oat…`
    token, proceed. If it errors (SSO / API-key / Bedrock-Vertex seat), switch that account's
    `.envrc` to `ANTHROPIC_API_KEY` or `CLAUDE_CODE_USE_BEDROCK=1` instead.
-3. **Store each token in its own keychain item** — have the user run, with their real token:
-   `! security add-generic-password -s Claude-Work-Token -a "$USER" -w 'TOKEN'`
+4. **Store each token in its own keychain item** — have the user run, with their real token:
+   `! security add-generic-password -s Claude-$PROFILE-Token -a "$USER" -w 'TOKEN'`
    (and `Claude-Personal-Token` for personal). You supply the command; they supply the token.
-4. **Global default in `~/.zshrc`** — from `templates/zshrc-snippet.sh`, placed BEFORE the
+5. **Global default in `~/.zshrc`** — from `templates/zshrc-snippet.sh`, placed BEFORE the
    direnv hook. Personal is the default (safety bias: a slip sends personal code to the
    personal account, never company code to it).
-5. **Per-dir override** — copy `templates/envrc.example` to the work tree root as `.envrc`,
-   adjust `CLAUDE_CONFIG_DIR`/service name if needed, then have the user `direnv allow` it.
+6. **Per-dir override** — copy `templates/envrc.example` to the work tree root as `.envrc`,
+   set its `PROFILE=` to match step 2, then have the user `direnv allow` it.
    It's fail-closed on purpose; keep it that way.
-6. **Verify** — run `./verify.sh <work-dir>`. Pass = two different `/status` identities AND an
+7. **Verify** — run `./verify.sh <work-dir>`. Pass = two different `/status` identities AND an
    unchanged keychain hash. If the keychain hash changed, a `/login` ran or the env token was
    empty; check `env | grep CLAUDE_CODE_OAUTH_TOKEN` in the work dir.
 

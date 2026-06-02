@@ -70,19 +70,28 @@ echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
 
 ### 2. Mint a token per account
 
+Each non-default account is a **profile** — a name you choose (`work`, `acme`, `client-x`…).
+The convention ties three things to that name, and they must match:
+
+```
+profile "work"  ->  config dir ~/.claude-work  +  keychain item Claude-work-Token
+```
+
 Run `setup-token` **while logged into each account**. It mints a long-lived OAuth token
 (valid ~1 year). Store each in its own Keychain item — never in plaintext, never in a
 screenshot.
 
 ```sh
-# Personal (while logged into your personal account)
+# Personal — this is the default account, no profile needed
 claude setup-token
 security add-generic-password -s Claude-Personal-Token -a "$USER" -w 'PASTE_PERSONAL_TOKEN'
 
-# Work (mint it in an isolated config dir so it can't disturb your default profile)
-mkdir -p ~/.claude-work
-CLAUDE_CONFIG_DIR=~/.claude-work claude setup-token
-security add-generic-password -s Claude-Work-Token -a "$USER" -w 'PASTE_WORK_TOKEN'
+# Work profile — pick a PROFILE name and use it consistently (here: "work").
+# Mint into an isolated config dir so it can't disturb your default profile.
+PROFILE=work
+mkdir -p ~/.claude-$PROFILE
+CLAUDE_CONFIG_DIR=~/.claude-$PROFILE claude setup-token
+security add-generic-password -s Claude-$PROFILE-Token -a "$USER" -w 'PASTE_WORK_TOKEN'
 ```
 
 > Tokens minted into a screenshot or pasted anywhere visible are **burned** — mint a fresh
@@ -110,10 +119,14 @@ cp templates/envrc.example ~/work/.envrc
 cd ~/work && direnv allow
 ```
 
-The template is **fail-closed** — if the token can't be read it aborts rather than silently
-falling back to the shared keychain. See [`templates/envrc.example`](templates/envrc.example).
+The template has one knob — `PROFILE` at the top. **Set it to the same profile name you
+used in step 2** (`work`, `acme`, …); it derives the config dir and keychain item from that,
+so there's only one thing to keep in sync. For a second work account, copy the `.envrc` into
+that tree and change only `PROFILE`. The template is **fail-closed** — if the token can't be
+read it aborts rather than silently falling back to the shared keychain.
+See [`templates/envrc.example`](templates/envrc.example).
 
-Now every repo under `~/work` uses the work account; everywhere else uses personal. No
+Now every repo under `~/work` uses that account; everywhere else uses personal. No
 aliases, no manual switching.
 
 ## Verify it
