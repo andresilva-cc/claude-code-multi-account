@@ -1,56 +1,58 @@
 #!/usr/bin/env bash
-# claude-code-multi-account: prove isolation holds.
+# claude-code-multi-account: prove a work directory resolves to a DIFFERENT
+# account than your personal default.
 #
-# Checks, for a given work directory:
-#   1. the work dir resolves to a DIFFERENT identity than the default (personal)
-#   2. running the work account leaves the shared keychain slot BYTE-IDENTICAL
-#      (proof the env token is bypassing the keychain, not rewriting it)
+# It does NOT use `claude -p '/status'` — slash commands don't run in headless
+# (`-p`) mode. Instead it compares the OAuth token + config dir that each
+# location actually resolves to, which is the real switching mechanism. Offline,
+# no quota used.
 #
-# Usage: ./verify.sh <work-dir>      e.g. ./verify.sh ~/work
+# Usage: ./verify.sh <work-dir> [personal-keychain-item]
+#   e.g. ./verify.sh ~/work
+#   personal-keychain-item defaults to "Claude-Personal-Token"
 set -euo pipefail
 
-KEYCHAIN_SERVICE="Claude Code-credentials"
 WORK_DIR="${1:-}"
+PERSONAL_ITEM="${2:-Claude-Personal-Token}"
 
-if [ -z "$WORK_DIR" ]; then
-  echo "usage: ./verify.sh <work-dir>" >&2
-  exit 2
-fi
-if ! command -v claude >/dev/null 2>&1; then
-  echo "verify: 'claude' not found in PATH" >&2
-  exit 2
-fi
+[ -n "$WORK_DIR" ] || { echo "usage: ./verify.sh <work-dir> [personal-keychain-item]" >&2; exit 2; }
+[ -d "$WORK_DIR" ] || { echo "verify: $WORK_DIR does not exist" >&2; exit 2; }
+command -v direnv >/dev/null 2>&1 || { echo "verify: direnv not installed" >&2; exit 2; }
 
-keychain_hash() {
-  security find-generic-password -s "$KEYCHAIN_SERVICE" -w 2>/dev/null | shasum | awk '{print $1}'
-}
+sha() { if [ -n "${1:-}" ]; then printf %s "$1" | shasum | awk '{print $1}'; else echo "<empty>"; fi; }
 
-echo "==> personal (default, \$HOME)"
-( cd "$HOME" && claude -p '/status' ) || true
+# What the work dir resolves to, loaded exactly as direnv would load its .envrc.
+WORK_TOKEN="$(direnv exec "$WORK_DIR" sh -c 'printf %s "${CLAUDE_CODE_OAUTH_TOKEN:-}"' 2>/dev/null || true)"
+WORK_CFG="$(direnv exec "$WORK_DIR" sh -c 'printf %s "${CLAUDE_CONFIG_DIR:-}"' 2>/dev/null || true)"
 
+# Personal default token, read straight from its keychain item.
+PERSONAL_TOKEN="$(security find-generic-password -s "$PERSONAL_ITEM" -w 2>/dev/null || true)"
+
+echo "==> work dir: $WORK_DIR"
+echo "    CLAUDE_CONFIG_DIR : ${WORK_CFG:-<unset>}"
+echo "    token (sha)       : $(sha "$WORK_TOKEN")"
+echo "==> personal ($PERSONAL_ITEM)"
+echo "    token (sha)       : $(sha "$PERSONAL_TOKEN")"
 echo
-echo "==> work ($WORK_DIR)"
-if [ ! -d "$WORK_DIR" ]; then
-  echo "verify: $WORK_DIR does not exist" >&2
-  exit 2
+
+fail=0
+if [ -z "$WORK_TOKEN" ]; then
+  echo "FAIL — the work dir resolved NO token."
+  echo "       Did you 'direnv allow' its .envrc, and is the Claude-<profile>-Token keychain item set?"
+  fail=1
+fi
+if [ -z "$PERSONAL_TOKEN" ]; then
+  echo "WARN — personal keychain item '$PERSONAL_ITEM' is empty."
+  echo "       If you named it differently, pass it as arg 2: ./verify.sh $WORK_DIR <item-name>"
+fi
+if [ -n "$WORK_TOKEN" ] && [ "$WORK_TOKEN" = "$PERSONAL_TOKEN" ]; then
+  echo "FAIL — work and personal resolve the SAME token; not isolated."
+  fail=1
 fi
 
-BEFORE="$(keychain_hash)"
-( cd "$WORK_DIR" && claude -p '/status' ) || true
-AFTER="$(keychain_hash)"
-
-echo
-echo "==> keychain slot integrity"
-echo "    before: ${BEFORE:-<empty>}"
-echo "    after:  ${AFTER:-<empty>}"
-
-if [ "$BEFORE" = "$AFTER" ]; then
-  echo "    PASS — keychain untouched; the work env token bypassed it."
-else
-  echo "    FAIL — keychain changed. Something ran /login, or the work .envrc token was empty."
-  echo "           Check: cd $WORK_DIR && env | grep -c CLAUDE_CODE_OAUTH_TOKEN   (must print 1)"
-  exit 1
+if [ "$fail" -eq 0 ] && [ -n "$WORK_TOKEN" ] && [ -n "$PERSONAL_TOKEN" ]; then
+  echo "PASS — the work dir loads a distinct account token from personal."
+elif [ "$fail" -eq 0 ]; then
+  echo "OK — the work dir loads a token; couldn't compare against personal (see WARN)."
 fi
-
-echo
-echo "Done. Confirm the two /status outputs above show DIFFERENT accounts."
+exit "$fail"

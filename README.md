@@ -131,13 +131,19 @@ aliases, no manual switching.
 
 ## Verify it
 
-Run [`verify.sh`](verify.sh) — it confirms each directory resolves to the right identity
-**and** that running the non-default account leaves the keychain byte-for-byte untouched
-(proof the env token is bypassing it):
+Run [`verify.sh`](verify.sh) — it confirms a work directory resolves to a **different account
+token** than your personal default. It compares the OAuth token each location resolves to
+(the real switching mechanism); it's offline and uses no quota.
 
 ```sh
 ./verify.sh ~/work
+# second arg overrides the personal keychain item name if you renamed it:
+# ./verify.sh ~/work Claude-Personal-Token
 ```
+
+> Note: it deliberately does **not** call `claude -p '/status'` — slash commands don't run in
+> headless (`-p`) mode, so that check would always report "not available." Comparing resolved
+> tokens is the reliable, scriptable signal.
 
 ## Caveats
 
