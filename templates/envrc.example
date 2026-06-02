@@ -1,0 +1,19 @@
+# claude-code-multi-account: per-directory account override
+# Copy to the root of a work tree (e.g. ~/work/.envrc), then run: direnv allow
+#
+# Fail-closed: if the token can't be read, this aborts the .envrc rather than letting
+# Claude Code silently fall back to the shared keychain (= wrong account).
+
+export CLAUDE_CONFIG_DIR="$HOME/.claude-work"
+export CLAUDE_CODE_OAUTH_TOKEN="$(security find-generic-password -s Claude-Work-Token -w 2>/dev/null)"
+
+if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+  echo "claude-code-multi-account: WORK token missing from keychain (Claude-Work-Token)" >&2
+  echo "  re-mint with: CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR claude setup-token" >&2
+  exit 1
+fi
+
+# If your work seat is API-key or Bedrock/Vertex backed instead of setup-token OAuth,
+# replace the two exports above with one of:
+#   export ANTHROPIC_API_KEY="$(security find-generic-password -s Claude-Work-Key -w)"
+#   export CLAUDE_CODE_USE_BEDROCK=1   # (+ AWS creds / region)

@@ -1,0 +1,14 @@
+# Never commit real, account-specific config
+.envrc
+.direnv/
+.claude/
+.claude-work/
+
+# Secrets / tokens — belt and suspenders
+*.token
+*token*.txt
+.env
+.env.*
+
+# OS
+.DS_Store
