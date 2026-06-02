@@ -57,6 +57,7 @@ everywhere  ──▶  CLAUDE_CODE_OAUTH_TOKEN = personal   (global default)
 
 - macOS, zsh
 - [`direnv`](https://direnv.net/) — `brew install direnv`
+- `jq` (for the one-time onboarding-flag seed) — `brew install jq`
 - Claude Code, logged in (you'll re-auth each account once to mint its token)
 
 ## Setup
@@ -99,6 +100,19 @@ security add-generic-password -s Claude-$PROFILE-Token -a "$USER" -w 'PASTE_WORK
 
 > Tokens minted into a screenshot or pasted anywhere visible are **burned** — mint a fresh
 > one and store only that.
+
+Then mark the new work config dir as **already onboarded**. A fresh `CLAUDE_CONFIG_DIR` hasn't
+completed first-run setup, so interactive `claude` would run onboarding and prompt a login —
+even though the token is valid (headless `claude -p` works regardless). Seed the flag so it
+uses the token instead:
+
+```sh
+cfg=~/.claude-$PROFILE/.claude.json
+jq '.hasCompletedOnboarding = true' "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg"
+```
+
+> **Never click "login" on that onboarding screen.** A browser `/login` writes the shared
+> keychain slot and breaks isolation. The token is the auth; onboarding just needs marking done.
 
 ### 3. Make your personal account the global default
 

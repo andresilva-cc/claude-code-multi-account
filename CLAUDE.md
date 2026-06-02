@@ -42,15 +42,22 @@ required.
 4. **Store each token in its own keychain item** — have the user run, with their real token:
    `! security add-generic-password -s Claude-$PROFILE-Token -a "$USER" -w 'TOKEN'`
    (and `Claude-Personal-Token` for personal). You supply the command; they supply the token.
-5. **Global default in `~/.zshrc`** — from `templates/zshrc-snippet.sh`, placed BEFORE the
+   Keychain names are case-sensitive — the item name must match the `.envrc` `PROFILE` casing.
+5. **Seed onboarding flag** on each fresh work config dir, or interactive `claude` runs
+   first-run onboarding and prompts a login (headless `-p` works, but interactive doesn't):
+   `jq '.hasCompletedOnboarding = true' ~/.claude-$PROFILE/.claude.json > /tmp/c && mv /tmp/c ~/.claude-$PROFILE/.claude.json`.
+   Warn the user to NEVER click "login" in onboarding — it clobbers the shared keychain.
+6. **Global default in `~/.zshrc`** — from `templates/zshrc-snippet.sh`, placed BEFORE the
    direnv hook. Personal is the default (safety bias: a slip sends personal code to the
-   personal account, never company code to it).
-6. **Per-dir override** — copy `templates/envrc.example` to the work tree root as `.envrc`,
+   personal account, never company code to it). Do NOT set `CLAUDE_CONFIG_DIR` for personal —
+   pointing it at `~/.claude` breaks config resolution.
+7. **Per-dir override** — copy `templates/envrc.example` to the work tree root as `.envrc`,
    set its `PROFILE=` to match step 2, then have the user `direnv allow` it.
    It's fail-closed on purpose; keep it that way.
-7. **Verify** — run `./verify.sh <work-dir>`. Pass = two different `/status` identities AND an
-   unchanged keychain hash. If the keychain hash changed, a `/login` ran or the env token was
-   empty; check `env | grep CLAUDE_CODE_OAUTH_TOKEN` in the work dir.
+8. **Verify** — run `./verify.sh <work-dir>`. Pass = the work dir resolves a DIFFERENT OAuth
+   token than personal. (It compares resolved tokens, not `/status` — slash commands don't run
+   in headless mode.) If the work token is empty, the `.envrc` wasn't allowed or the keychain
+   item name/casing is wrong.
 
 ## When editing this repo
 
