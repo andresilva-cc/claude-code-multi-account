@@ -178,6 +178,11 @@ the web UI's *Settings → Usage* shows the session/weekly meters ticking up, an
 billing view shows **$0 direct/overage spend**. The limits are enforced server-side; they're
 just not *displayed* in the CLI. Check usage in the **web UI**, not the CLI.
 
+**Confirm it on your own account** rather than taking this on faith — plans and tenants differ:
+do some real work, then check *Settings → Usage* in the web UI (the meters should move) and, if
+you're on a Team/org plan, have an admin verify **$0 overage** in the billing view. If you see
+dollar spend instead of subscription usage, your seat may be API-billed — stop and recheck.
+
 (`claude -p` / headless usage is the exception — as of 2026-06-15 it draws from a separate
 Agent SDK credit pool rather than your interactive limits. Normal interactive use is unaffected.)
 
