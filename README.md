@@ -6,7 +6,7 @@ Run two (or more) Claude Code accounts — e.g. a **personal** account and a
 No tools to install. No script touches your credentials. Just official Claude Code
 primitives (`setup-token`, `CLAUDE_CONFIG_DIR`) + [`direnv`](https://direnv.net/).
 
-> **Status:** macOS + zsh. Tested against Claude Code `v2.1.160` (June 2026).
+> **Status:** macOS + zsh. Verified on Claude Code `v2.1.161` with a personal + Team account (June 2026).
 > Relies on current macOS keychain behavior and open issue
 > [anthropics/claude-code#20553](https://github.com/anthropics/claude-code/issues/20553) —
 > see [Why this works](#why-this-works) and [Caveats](#caveats).
@@ -165,6 +165,21 @@ token** than your personal default. It compares the OAuth token each location re
 > Note: it deliberately does **not** call `claude -p '/status'` — slash commands don't run in
 > headless (`-p`) mode, so that check would always report "not available." Comparing resolved
 > tokens is the reliable, scriptable signal.
+
+## "Claude API" in the header — don't panic
+
+A token-authed profile shows **`Claude API`** in the startup header and a **blank `/usage`**
+inside the CLI. This is **not** API billing. A bare token has no stored account session
+(`oauthAccount` is `null`), so the CLI can't render your plan name or usage meters and falls
+back to a generic label.
+
+Interactive use still bills your **subscription** — confirmed end to end on a **Team** plan:
+the web UI's *Settings → Usage* shows the session/weekly meters ticking up, and the admin
+billing view shows **$0 direct/overage spend**. The limits are enforced server-side; they're
+just not *displayed* in the CLI. Check usage in the **web UI**, not the CLI.
+
+(`claude -p` / headless usage is the exception — as of 2026-06-15 it draws from a separate
+Agent SDK credit pool rather than your interactive limits. Normal interactive use is unaffected.)
 
 ## Caveats
 
