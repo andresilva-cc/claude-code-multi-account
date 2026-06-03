@@ -6,7 +6,8 @@ Run two (or more) Claude Code accounts — e.g. a **personal** account and a
 No tools to install. No script touches your credentials. Just official Claude Code
 primitives (`setup-token`, `CLAUDE_CONFIG_DIR`) + [`direnv`](https://direnv.net/).
 
-> **Status:** macOS + zsh. Verified on Claude Code `v2.1.161` with a personal + Team account (June 2026).
+> **Status:** macOS (zsh/bash). Verified on Claude Code `v2.1.161` with a personal + Team account (June 2026).
+> Linux/Windows: see [Other platforms](#other-platforms).
 > Relies on current macOS keychain behavior and open issue
 > [anthropics/claude-code#20553](https://github.com/anthropics/claude-code/issues/20553) —
 > see [Why this works](#why-this-works) and [Caveats](#caveats).
@@ -55,7 +56,7 @@ everywhere  ──▶  CLAUDE_CODE_OAUTH_TOKEN = personal   (global default)
 
 ## Requirements
 
-- macOS, zsh
+- macOS, zsh (bash works too — see [Other platforms](#other-platforms))
 - [`direnv`](https://direnv.net/) — `brew install direnv`
 - `jq` (for the one-time onboarding-flag seed) — `brew install jq`
 - Claude Code, logged in (you'll re-auth each account once to mint its token)
@@ -68,6 +69,8 @@ everywhere  ──▶  CLAUDE_CODE_OAUTH_TOKEN = personal   (global default)
 brew install direnv
 echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
 ```
+
+> bash: use `echo 'eval "$(direnv hook bash)"' >> ~/.bashrc` instead. Everything else is identical.
 
 ### 2. Mint a token per account
 
@@ -186,10 +189,38 @@ dollar spend instead of subscription usage, your seat may be API-billed — stop
 (`claude -p` / headless usage is the exception — as of 2026-06-15 it draws from a separate
 Agent SDK credit pool rather than your interactive limits. Normal interactive use is unaffected.)
 
+## Token expiry & re-minting
+
+`setup-token` tokens last ~1 year. When one expires, the failure is **not** silent — but note
+the `.envrc` fail-closed guard won't catch it: it only checks the token is non-empty, and an
+expired token is still a non-empty string. So `claude` launches, the server returns **401**,
+and you get an auth error — typically the **"Select login method"** screen.
+
+> **Do NOT click login on that screen.** A browser `/login` writes the shared keychain slot and
+> clobbers your other account. Re-mint instead:
+
+```sh
+PROFILE=work
+CLAUDE_CONFIG_DIR=~/.claude-$PROFILE claude setup-token
+security add-generic-password -U -s Claude-$PROFILE-Token -a "$USER" -w 'NEW_TOKEN'   # -U updates
+```
+
+Open a fresh terminal and you're back. (Same drill for the personal token.)
+
+## Other platforms
+
+- **bash (macOS):** fully supported — use `direnv hook bash` in `~/.bashrc` (see step 1).
+  `verify.sh` already runs under bash. Nothing else changes.
+- **Linux:** *easier, and you don't need this repo's keychain workaround.* On Linux credentials
+  live in a file (`~/.claude/.credentials.json`) and **do** move with `CLAUDE_CONFIG_DIR` — so a
+  plain per-dir `CLAUDE_CONFIG_DIR` + normal `claude /login` per account isolates cleanly, no
+  `setup-token` dance. *(Untested here — no Linux box to verify on; PRs/reports welcome.)*
+- **Windows:** not covered. Credential storage differs again; contributions welcome.
+
 ## Caveats
 
-- **macOS + zsh only.** On Linux/Windows credentials *do* move with `CLAUDE_CONFIG_DIR`, so
-  the keychain workaround is unnecessary there.
+- **macOS-focused** (zsh or bash). Linux/Windows differ — see [Other platforms](#other-platforms);
+  the keychain workaround is a macOS-specific need.
 - **Never run `/login` in a work dir.** That writes the shared keychain slot and undoes the
   isolation. Re-auth by re-running `setup-token` (step 2) instead.
 - **Only point `CLAUDE_CONFIG_DIR` at a NEW dir** (e.g. `~/.claude-work`), set before that
