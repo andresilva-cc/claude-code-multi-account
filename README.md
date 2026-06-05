@@ -44,15 +44,27 @@ Two facts about how Claude Code stores state on macOS:
    logging in as B wipes A's refresh token
    ([#20553](https://github.com/anthropics/claude-code/issues/20553)).
 
-The fix is the auth-precedence rule: **`CLAUDE_CODE_OAUTH_TOKEN` outranks the keychain.**
-Mint a long-lived token per account with `claude setup-token`, export the right one per
-directory via `direnv`, and the binary uses that token and **never touches the shared
-keychain slot.** Deterministic, no clobbering.
+The fix uses the auth-precedence rule — **`CLAUDE_CODE_OAUTH_TOKEN` outranks the keychain** —
+but only where needed:
+
+- **Your primary account claims the keychain** via normal `claude /login`. Nothing special;
+  it gets a **full subscription session** (real `/usage`, plan display, and login-gated
+  features like `/remote-control`).
+- **Each additional account** mints a long-lived `setup-token` and exports it per-directory
+  via `direnv`. `CLAUDE_CODE_OAUTH_TOKEN` outranks the keychain, so those dirs override
+  **without ever writing the shared slot** — no collision, because only the primary account
+  touches the keychain.
 
 ```
-everywhere  ──▶  CLAUDE_CODE_OAUTH_TOKEN = personal   (global default)
-~/work/*    ──▶  CLAUDE_CODE_OAUTH_TOKEN = work       (.envrc override via direnv)
+everywhere  ──▶  keychain /login  = personal   (full session; primary account)
+~/work/*    ──▶  CLAUDE_CODE_OAUTH_TOKEN = work (.envrc token override via direnv)
 ```
+
+> **Token-authed accounts can't use login-gated features.** A `setup-token` has no `/login`
+> session, so for those (non-primary) accounts **`/remote-control` doesn't work**, and the CLI
+> shows "Claude API" with no `/usage` meter (see [that section](#claude-api-in-the-header--dont-panic)).
+> They still bill the subscription and work for normal coding. **Put the account you need
+> `/remote-control` (or usage visibility) on as the primary/keychain account.**
 
 ## Requirements
 
@@ -72,9 +84,16 @@ echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
 
 > bash: use `echo 'eval "$(direnv hook bash)"' >> ~/.bashrc` instead. Everything else is identical.
 
-### 2. Mint a token per account
+### 2. Log in your primary account, then mint a token per additional account
 
-Each non-default account is a **profile** — a name you choose (`work`, `acme`, `client-x`…).
+**Primary account** — just log in normally. It owns the keychain and gets the full session
+(remote control, `/usage`):
+
+```sh
+claude /login    # pick your primary (e.g. personal) account
+```
+
+**Each additional account** is a **profile** — a name you choose (`work`, `acme`, `client-x`…).
 The convention ties three things to that name, and they must match:
 
 ```
@@ -84,17 +103,12 @@ profile "work"  ->  config dir ~/.claude-work  +  keychain item Claude-work-Toke
 > Keychain item names are **case-sensitive**. `Claude-work-Token` ≠ `Claude-Work-Token` — use
 > the exact same casing as your `PROFILE`, or the `.envrc` reports the token "missing."
 
-Run `setup-token` **while logged into each account**. It mints a long-lived OAuth token
-(valid ~1 year). Store each in its own Keychain item — never in plaintext, never in a
-screenshot.
+Mint a token **while logged into that account**. `setup-token` mints a long-lived OAuth token
+(valid ~1 year). Store it in its own Keychain item — never in plaintext, never in a screenshot.
 
 ```sh
-# Personal — this is the default account, no profile needed
-claude setup-token
-security add-generic-password -s Claude-Personal-Token -a "$USER" -w 'PASTE_PERSONAL_TOKEN'
-
 # Work profile — pick a PROFILE name and use it consistently (here: "work").
-# Mint into an isolated config dir so it can't disturb your default profile.
+# Mint into an isolated config dir so it can't disturb your primary login.
 PROFILE=work
 mkdir -p ~/.claude-$PROFILE
 CLAUDE_CONFIG_DIR=~/.claude-$PROFILE claude setup-token
@@ -117,20 +131,18 @@ jq '.hasCompletedOnboarding = true' "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg"
 > **Never click "login" on that onboarding screen.** A browser `/login` writes the shared
 > keychain slot and breaks isolation. The token is the auth; onboarding just needs marking done.
 
-### 3. Make your personal account the global default
+### 3. Hook direnv (that's it for the default)
 
-Add to `~/.zshrc`, **before** the `direnv hook` line. Personal-as-default is a deliberate
-safety bias: a forgotten switch means *your own* side-project goes to *your own* account —
-never company code into a personal, training-eligible account.
+Your primary account is already the global default — anywhere without a work `.envrc` falls
+through to its keychain `/login` session. So step 3 is just making sure `direnv` is hooked
+(from step 1). **Set no Claude env vars for the default** — that's what keeps the primary
+account a full `/login` session. This is also a safety bias: a forgotten switch means *your
+own* side-project goes to *your own* account, never company code into a personal one.
 
-```sh
-export CLAUDE_CODE_OAUTH_TOKEN="$(security find-generic-password -s Claude-Personal-Token -w)"
-```
-
-> **Do not set `CLAUDE_CONFIG_DIR` for personal.** Personal uses the native config dir
-> (`~/.claude`). Pointing `CLAUDE_CONFIG_DIR` at `~/.claude` relocates the config file from
-> `~/.claude.json` to `~/.claude/.claude.json` and breaks it ("configuration file not found").
-> Only *work* profiles set `CLAUDE_CONFIG_DIR`, and only to a **new** dir like `~/.claude-work`.
+> **Do not set `CLAUDE_CONFIG_DIR` (or a token) for the default.** It uses the native config
+> dir (`~/.claude`). Pointing `CLAUDE_CONFIG_DIR` at `~/.claude` relocates the config file to
+> `~/.claude/.claude.json` and breaks it ("configuration file not found"). Only *work* profiles
+> set `CLAUDE_CONFIG_DIR`, and only to a **new** dir like `~/.claude-work`.
 
 See [`templates/zshrc-snippet.sh`](templates/zshrc-snippet.sh).
 
@@ -155,19 +167,17 @@ aliases, no manual switching.
 
 ## Verify it
 
-Run [`verify.sh`](verify.sh) — it confirms a work directory resolves to a **different account
-token** than your personal default. It compares the OAuth token each location resolves to
-(the real switching mechanism); it's offline and uses no quota.
+Run [`verify.sh`](verify.sh) — it confirms the work dir resolves a token + its own config dir,
+while the default (`$HOME`) resolves **neither** (so it falls through to the keychain `/login`).
+That's the whole isolation in one check; it's offline and uses no quota.
 
 ```sh
 ./verify.sh ~/work
-# second arg overrides the personal keychain item name if you renamed it:
-# ./verify.sh ~/work Claude-Personal-Token
 ```
 
 > Note: it deliberately does **not** call `claude -p '/status'` — slash commands don't run in
-> headless (`-p`) mode, so that check would always report "not available." Comparing resolved
-> tokens is the reliable, scriptable signal.
+> headless (`-p`) mode, so that check would always report "not available." Inspecting the
+> resolved env per directory is the reliable, scriptable signal.
 
 ## "Claude API" in the header — don't panic
 
@@ -176,10 +186,21 @@ inside the CLI. This is **not** API billing. A bare token has no stored account 
 (`oauthAccount` is `null`), so the CLI can't render your plan name or usage meters and falls
 back to a generic label.
 
+For the same reason, **login-gated features don't work on a token-authed account** — notably
+**`/remote-control`**. If you need remote control (or the in-CLI usage meter) on a given
+account, make it your **primary/keychain account** (`claude /login`, no `.envrc`); only the
+*other* accounts ride on tokens. You can only have one keychain login, so pick the account you
+most need those features on.
+
 Interactive use still bills your **subscription** — confirmed end to end on a **Team** plan:
 the web UI's *Settings → Usage* shows the session/weekly meters ticking up, and the admin
 billing view shows **$0 direct/overage spend**. The limits are enforced server-side; they're
-just not *displayed* in the CLI. Check usage in the **web UI**, not the CLI.
+just not *displayed* in the built-in panel. Check usage in the **web UI**, not the `/usage` panel.
+
+> **Tip — get a usage readout back in the CLI.** The blank `/usage` is just the built-in panel
+> not rendering for token auth. A custom **statusline** (`/statusline`) *does* surface usage for
+> these accounts — it pulls from local session data / the usage endpoint, independent of the
+> keychain session — so you get an at-a-glance meter in the terminal regardless of auth method.
 
 **Confirm it on your own account** rather than taking this on faith — plans and tenants differ:
 do some real work, then check *Settings → Usage* in the web UI (the meters should move) and, if

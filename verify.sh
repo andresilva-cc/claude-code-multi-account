@@ -1,58 +1,52 @@
 #!/usr/bin/env bash
-# claude-code-multi-account: prove a work directory resolves to a DIFFERENT
-# account than your personal default.
+# claude-code-multi-account: prove isolation holds.
 #
-# It does NOT use `claude -p '/status'` — slash commands don't run in headless
-# (`-p`) mode. Instead it compares the OAuth token + config dir that each
-# location actually resolves to, which is the real switching mechanism. Offline,
-# no quota used.
+# Model: your PRIMARY account owns the keychain via `claude /login` (no env vars);
+# each work dir overrides it with a CLAUDE_CODE_OAUTH_TOKEN in its .envrc. So a correct
+# setup means:
+#   - the work dir resolves a non-empty token + its own CLAUDE_CONFIG_DIR
+#   - the default ($HOME) resolves NO token + NO CLAUDE_CONFIG_DIR (falls through to the
+#     keychain /login session)
 #
-# Usage: ./verify.sh <work-dir> [personal-keychain-item]
-#   e.g. ./verify.sh ~/work
-#   personal-keychain-item defaults to "Claude-Personal-Token"
+# It does NOT use `claude -p '/status'` — slash commands don't run in headless (`-p`) mode.
+# Offline, no quota.
+#
+# Usage: ./verify.sh <work-dir>      e.g. ./verify.sh ~/work
 set -euo pipefail
 
 WORK_DIR="${1:-}"
-PERSONAL_ITEM="${2:-Claude-Personal-Token}"
-
-[ -n "$WORK_DIR" ] || { echo "usage: ./verify.sh <work-dir> [personal-keychain-item]" >&2; exit 2; }
+[ -n "$WORK_DIR" ] || { echo "usage: ./verify.sh <work-dir>" >&2; exit 2; }
 [ -d "$WORK_DIR" ] || { echo "verify: $WORK_DIR does not exist" >&2; exit 2; }
 command -v direnv >/dev/null 2>&1 || { echo "verify: direnv not installed" >&2; exit 2; }
 
-sha() { if [ -n "${1:-}" ]; then printf %s "$1" | shasum | awk '{print $1}'; else echo "<empty>"; fi; }
+# Read what each location resolves to, loaded exactly as direnv would load its .envrc.
+get() { direnv exec "$1" sh -c "printf %s \"\${$2:-}\"" 2>/dev/null || true; }
+sha() { if [ -n "${1:-}" ]; then printf %s "$1" | shasum | awk '{print $1}'; else echo "<unset>"; fi; }
 
-# What the work dir resolves to, loaded exactly as direnv would load its .envrc.
-WORK_TOKEN="$(direnv exec "$WORK_DIR" sh -c 'printf %s "${CLAUDE_CODE_OAUTH_TOKEN:-}"' 2>/dev/null || true)"
-WORK_CFG="$(direnv exec "$WORK_DIR" sh -c 'printf %s "${CLAUDE_CONFIG_DIR:-}"' 2>/dev/null || true)"
-
-# Personal default token, read straight from its keychain item.
-PERSONAL_TOKEN="$(security find-generic-password -s "$PERSONAL_ITEM" -w 2>/dev/null || true)"
+WORK_TOKEN="$(get "$WORK_DIR" CLAUDE_CODE_OAUTH_TOKEN)"
+WORK_CFG="$(get "$WORK_DIR" CLAUDE_CONFIG_DIR)"
+HOME_TOKEN="$(get "$HOME" CLAUDE_CODE_OAUTH_TOKEN)"
+HOME_CFG="$(get "$HOME" CLAUDE_CONFIG_DIR)"
 
 echo "==> work dir: $WORK_DIR"
 echo "    CLAUDE_CONFIG_DIR : ${WORK_CFG:-<unset>}"
 echo "    token (sha)       : $(sha "$WORK_TOKEN")"
-echo "==> personal ($PERSONAL_ITEM)"
-echo "    token (sha)       : $(sha "$PERSONAL_TOKEN")"
+echo "==> default (\$HOME) — should use the keychain /login session"
+echo "    CLAUDE_CONFIG_DIR : ${HOME_CFG:-<unset>}"
+echo "    token (sha)       : $(sha "$HOME_TOKEN")"
 echo
 
 fail=0
-if [ -z "$WORK_TOKEN" ]; then
-  echo "FAIL — the work dir resolved NO token."
-  echo "       Did you 'direnv allow' its .envrc, and is the Claude-<profile>-Token keychain item set?"
-  fail=1
-fi
-if [ -z "$PERSONAL_TOKEN" ]; then
-  echo "WARN — personal keychain item '$PERSONAL_ITEM' is empty."
-  echo "       If you named it differently, pass it as arg 2: ./verify.sh $WORK_DIR <item-name>"
-fi
-if [ -n "$WORK_TOKEN" ] && [ "$WORK_TOKEN" = "$PERSONAL_TOKEN" ]; then
-  echo "FAIL — work and personal resolve the SAME token; not isolated."
+[ -n "$WORK_TOKEN" ] || { echo "FAIL — work dir resolved NO token (direnv allow'd? keychain item name/casing right?)"; fail=1; }
+[ -n "$WORK_CFG" ]   || { echo "FAIL — work dir set no CLAUDE_CONFIG_DIR (check the .envrc)"; fail=1; }
+[ -z "$HOME_TOKEN" ] || { echo "FAIL — \$HOME resolves a token; the default should be keychain /login, not env auth. Remove the token export from your shell rc."; fail=1; }
+[ -z "$HOME_CFG" ]   || { echo "WARN — \$HOME sets CLAUDE_CONFIG_DIR ($HOME_CFG); the default should leave it unset."; }
+if [ -n "$WORK_TOKEN" ] && [ "$WORK_TOKEN" = "$HOME_TOKEN" ]; then
+  echo "FAIL — work and default resolve the SAME token; not isolated."
   fail=1
 fi
 
-if [ "$fail" -eq 0 ] && [ -n "$WORK_TOKEN" ] && [ -n "$PERSONAL_TOKEN" ]; then
-  echo "PASS — the work dir loads a distinct account token from personal."
-elif [ "$fail" -eq 0 ]; then
-  echo "OK — the work dir loads a token; couldn't compare against personal (see WARN)."
+if [ "$fail" -eq 0 ]; then
+  echo "PASS — work dir overrides via token; default falls through to the keychain login."
 fi
 exit "$fail"

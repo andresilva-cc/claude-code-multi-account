@@ -30,34 +30,38 @@ is that the macOS OAuth token lives in a single keychain item NOT namespaced by
 Confirm preconditions, then drive the user through each step, pausing where their input is
 required.
 
-1. **Preconditions** — macOS + zsh; `claude` on PATH; `direnv` installed (`brew install direnv`)
-   and hooked in `~/.zshrc`. Ask which directories map to which account (e.g. a work tree path).
-2. **Pick a profile name** per non-default account (`work`, `acme`, …). Convention, all keyed
+1. **Preconditions** — macOS + zsh (or bash); `claude` on PATH; `direnv` installed
+   (`brew install direnv`) and hooked. Ask which directories map to which account, and **which
+   account needs `/remote-control` or in-CLI usage** — that one MUST be the primary/keychain
+   account (see step 2), because token-authed accounts can't use login-gated features.
+2. **Primary account = keychain `/login`.** Have the user `claude /login` to their primary
+   account (usually personal). It owns the keychain, sets no env vars, and keeps a full session
+   (remote control, /usage). Everything else overrides it per-dir. Do NOT mint a token for it.
+3. **Pick a profile name** per *additional* account (`work`, `acme`, …). Convention, all keyed
    to that name: config dir `~/.claude-$PROFILE` + keychain item `Claude-$PROFILE-Token` +
    the `PROFILE=` line in that tree's `.envrc`. Keep all three in sync.
-3. **Verify the seat can mint a token** — the one real unknown. Ask the user to run
+4. **Verify the seat can mint a token** — the one real unknown. Ask the user to run
    `! CLAUDE_CONFIG_DIR=~/.claude-$PROFILE claude setup-token`. If it returns an `sk-ant-oat…`
    token, proceed. If it errors (SSO / API-key / Bedrock-Vertex seat), switch that account's
    `.envrc` to `ANTHROPIC_API_KEY` or `CLAUDE_CODE_USE_BEDROCK=1` instead.
-4. **Store each token in its own keychain item** — have the user run, with their real token:
-   `! security add-generic-password -s Claude-$PROFILE-Token -a "$USER" -w 'TOKEN'`
-   (and `Claude-Personal-Token` for personal). You supply the command; they supply the token.
-   Keychain names are case-sensitive — the item name must match the `.envrc` `PROFILE` casing.
-5. **Seed onboarding flag** on each fresh work config dir, or interactive `claude` runs
+5. **Store the token in its own keychain item** — have the user run, with their real token:
+   `! security add-generic-password -U -s Claude-$PROFILE-Token -a "$USER" -w 'TOKEN'`
+   You supply the command; they supply the token. Keychain names are case-sensitive — the item
+   name must match the `.envrc` `PROFILE` casing.
+6. **Seed onboarding flag** on each fresh work config dir, or interactive `claude` runs
    first-run onboarding and prompts a login (headless `-p` works, but interactive doesn't):
    `jq '.hasCompletedOnboarding = true' ~/.claude-$PROFILE/.claude.json > /tmp/c && mv /tmp/c ~/.claude-$PROFILE/.claude.json`.
    Warn the user to NEVER click "login" in onboarding — it clobbers the shared keychain.
-6. **Global default in `~/.zshrc`** — from `templates/zshrc-snippet.sh`, placed BEFORE the
-   direnv hook. Personal is the default (safety bias: a slip sends personal code to the
-   personal account, never company code to it). Do NOT set `CLAUDE_CONFIG_DIR` for personal —
-   pointing it at `~/.claude` breaks config resolution.
-7. **Per-dir override** — copy `templates/envrc.example` to the work tree root as `.envrc`,
-   set its `PROFILE=` to match step 2, then have the user `direnv allow` it.
+7. **Hook direnv** (from `templates/zshrc-snippet.sh`). Set NO Claude env vars for the default —
+   that's what keeps the primary account a full `/login` session and is the safety bias (a slip
+   stays on the primary account). Only work profiles set `CLAUDE_CONFIG_DIR`, and only to a new
+   dir like `~/.claude-work` — never `~/.claude` (breaks config resolution).
+8. **Per-dir override** — copy `templates/envrc.example` to the work tree root as `.envrc`,
+   set its `PROFILE=` to match step 3, then have the user `direnv allow` it.
    It's fail-closed on purpose; keep it that way.
-8. **Verify** — run `./verify.sh <work-dir>`. Pass = the work dir resolves a DIFFERENT OAuth
-   token than personal. (It compares resolved tokens, not `/status` — slash commands don't run
-   in headless mode.) If the work token is empty, the `.envrc` wasn't allowed or the keychain
-   item name/casing is wrong.
+9. **Verify** — run `./verify.sh <work-dir>`. Pass = the work dir resolves a token + its own
+   CLAUDE_CONFIG_DIR, and `$HOME` resolves NEITHER (falls through to the keychain login). If
+   `$HOME` resolves a token, a stale token export is still in the shell rc — remove it.
 
 ## When editing this repo
 
