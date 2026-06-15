@@ -1,0 +1,9 @@
+# claude-code-multi-account — HOME-overlay auto-routing (Approach A).
+# Put this .envrc at the root of a work tree, then run: direnv allow
+#
+# It makes `claude`/`clauded` in this tree resolve to the work wrapper, which runs claude under
+# the secondary account's HOME overlay (separate keychain, real /login session). HOME flips only
+# for the claude process — your shell (git, ssh, history, prompt) is untouched.
+#
+# Replace <profile> with your profile name (e.g. work), matching setup-overlay.sh.
+PATH_add "$HOME/.claude-shims/<profile>"
