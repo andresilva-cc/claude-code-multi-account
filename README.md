@@ -88,6 +88,13 @@ The overlay keychain isn't your login keychain, so it doesn't auto-unlock at GUI
 `setup-overlay.sh` stores its password **in your personal login keychain** (which *does* auto-unlock),
 and the wrapper retrieves it on demand — no plaintext file.
 
+### Terminal multiplexers (cmux)
+
+If you run Claude Code inside [cmux](https://github.com/cmuxterm/cmux), the wrapper auto-routes
+through cmux's own wrapper when in a cmux session, so the secondary account's sessions still show
+in the sidebar. It's gated on `CMUX_SURFACE_ID` + the cmux app being present — **a no-op if you
+don't use cmux** (the wrapper just execs claude directly).
+
 ### Migrating an existing token profile's config + transcripts
 
 Moving off Approach B (a token profile at `~/.claude-work`) into the overlay — note `.claude.json`
