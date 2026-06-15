@@ -74,6 +74,14 @@ if command -v gh >/dev/null 2>&1; then T="\$(gh auth token 2>/dev/null)"; [ -n "
 export HOME="\$OVERLAY"
 export PATH="\$HOME/.local/bin:\$PATH"      # \$HOME/.local/bin -> real dir; silences /doctor's PATH check
 unset CLAUDE_CONFIG_DIR CLAUDE_CODE_OAUTH_TOKEN
+# If launched inside a cmux session, route through cmux's wrapper so the work session shows up in
+# the cmux sidebar. CMUX_CUSTOM_CLAUDE_PATH tells cmux's find_real_claude exactly which binary to
+# exec, so it can't loop back into this profile's shim (cmux's guard only knows its own shim).
+CMUX_WRAP="/Applications/cmux.app/Contents/Resources/bin/cmux-claude-wrapper"
+if [ -n "\${CMUX_SURFACE_ID:-}" ] && [ -x "\$CMUX_WRAP" ]; then
+  export CMUX_CUSTOM_CLAUDE_PATH="\$REAL_CLAUDE"
+  exec "\$CMUX_WRAP" "\$@"
+fi
 exec "\$REAL_CLAUDE" "\$@"
 EOF
 chmod +x "$WRAPPER"
