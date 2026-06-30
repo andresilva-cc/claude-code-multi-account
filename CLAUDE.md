@@ -18,6 +18,13 @@ Load-bearing fact for both: the macOS `/login` session lives in the keychain at
 `$HOME/Library/Keychains/login.keychain-db`, resolved by `$HOME`, in one un-namespaced item
 (`Claude Code-credentials`, [#20553](https://github.com/anthropics/claude-code/issues/20553)).
 
+Load-bearing fact for cmux (Approach A only): cmux persists `CMUX_CUSTOM_CLAUDE_PATH` per workspace
+but **not** `HOME`, so auto-resume replays that path under the real (personal) `HOME`. The wrapper
+must therefore capture **itself** (not the real `claude`) as `CMUX_CUSTOM_CLAUDE_PATH`, so resume
+re-enters the wrapper and re-overlays `HOME`; a `== $SELF` guard keeps it to one cmux-wrap pass.
+Capturing the real binary makes resumed work sessions run as the **primary** account (untrusted tree
++ "No conversation found"). See `setup-overlay.sh` cmux block and README "Terminal multiplexers".
+
 **Default to Approach A** unless the user explicitly wants the minimal-setup token path or doesn't
 care about remote-control/usage on the secondary account.
 

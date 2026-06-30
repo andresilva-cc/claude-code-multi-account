@@ -92,8 +92,21 @@ and the wrapper retrieves it on demand — no plaintext file.
 
 If you run Claude Code inside [cmux](https://github.com/cmuxterm/cmux), the wrapper auto-routes
 through cmux's own wrapper when in a cmux session, so the secondary account's sessions still show
-in the sidebar. It's gated on `CMUX_SURFACE_ID` + the cmux app being present — **a no-op if you
-don't use cmux** (the wrapper just execs claude directly).
+in the sidebar **and survive cmux auto-resume** as the right account. It's gated on `CMUX_SURFACE_ID`
++ the cmux app being present — **a no-op if you don't use cmux** (the wrapper just execs claude directly).
+
+Load-bearing detail: cmux persists `CMUX_CUSTOM_CLAUDE_PATH` per workspace but **not** `HOME`, so on
+auto-resume it replays that path under your real (personal) `HOME`. If it captured the real `claude`,
+the resumed work session would run as your **primary** account against `~/.claude` — untrusted work
+tree + "No conversation found" (the transcript lives under `~/<profile>-home/.claude`). The wrapper
+sidesteps this by capturing **itself** as `CMUX_CUSTOM_CLAUDE_PATH`, so resume re-enters the wrapper
+and re-establishes the overlay `HOME` first. A `== $SELF` guard keeps it to one cmux-wrap pass.
+
+Already have broken cmux workspaces from before this fix? Their saved binding still points at the real
+`claude`. Re-run `./setup-overlay.sh <profile>`, then start a **fresh** session in the work tree (via
+direnv → shim) so cmux re-captures the wrapper. Old auto-resume bindings won't self-heal on resume; to
+recover a specific old conversation, edit it in cmux's saved state (quit cmux first) to point
+`CMUX_CUSTOM_CLAUDE_PATH` at `~/.local/bin/claude-<profile>`.
 
 ### Migrating an existing token profile's config + transcripts
 
